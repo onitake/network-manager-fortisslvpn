@@ -58,7 +58,7 @@ AC_ARG_WITH(gnome, AS_HELP_STRING([--without-gnome], [Build NetworkManager-forti
 AM_CONDITIONAL(WITH_GNOME, test x"$with_gnome" != xno)
 AC_ARG_WITH(libnm-glib, AS_HELP_STRING([--without-libnm-glib], [Build NetworkManager-fortisslvpn without libnm-glib comatibility]))
 AM_CONDITIONAL(WITH_LIBNM_GLIB, test x"$with_libnm_glib" != xno)
-AC_ARG_ENABLE(absolute-paths, AS_HELP_STRING([--enable-absolute-paths], [Use absolute paths to in .name files. Useful for development. (default is no)]))
+AC_ARG_ENABLE(absolute-paths, AS_HELP_STRING([--enable-absolute-paths], [Use absolute paths to in .name files. Useful for development. Mandatory for recent NM versions. (default is no)]))
 
 GETTEXT_PACKAGE=NetworkManager-fortisslvpn
 AC_SUBST(GETTEXT_PACKAGE)
