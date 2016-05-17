@@ -37,3 +37,13 @@ src/nm-fortisslvpn-pppd-service-dbus.h
 src/nm-fortisslvpn-service
 
 /NetworkManager-fortisslvpn-*.tar*
+
+debian/.debhelper/
+debian/autoreconf.after
+debian/autoreconf.before
+debian/debhelper-build-stamp
+debian/files
+debian/network-manager-fortisslvpn.debhelper.log
+debian/network-manager-fortisslvpn.substvars
+debian/network-manager-fortisslvpn/
+
