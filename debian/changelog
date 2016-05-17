@@ -1,4 +1,4 @@
-network-manager-fortisslvpn (1.3.0-dev) unstable; urgency=medium
+network-manager-fortisslvpn (1.3.0~git9fd88e20) unstable; urgency=medium
 
   * First package
 
