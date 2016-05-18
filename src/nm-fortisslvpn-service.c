@@ -66,6 +66,13 @@ typedef struct {
 	NMConnection *connection;
 	char *config_file;
 	NMDBusFortisslvpnPpp *dbus_skeleton;
+	/* These are the stdin, stdout and stderr of the daemon process,
+	 * respectively. Use them to capture error messages and send input,
+	 * for example for 2-factor authentication.
+	 */
+	GIOChannel *in;
+	GIOChannel *out;
+	GIOChannel *err;
 } NMFortisslvpnPluginPrivate;
 
 #define NM_FORTISSLVPN_PLUGIN_GET_PRIVATE(o) (G_TYPE_INSTANCE_GET_PRIVATE ((o), NM_TYPE_FORTISSLVPN_PLUGIN, NMFortisslvpnPluginPrivate))
@@ -377,6 +384,55 @@ pppd_timed_out (gpointer user_data)
 }
 
 static gboolean
+openfortivpn_stdin_cb (GIOChannel *source, GIOCondition condition, gpointer user_data)
+{
+	NMFortisslvpnPlugin *plugin = NM_FORTISSLVPN_PLUGIN(user_data);
+	NMFortisslvpnPluginPrivate *priv = NM_FORTISSLVPN_PLUGIN_GET_PRIVATE(plugin);
+	
+	if (condition == G_IO_HUP) {
+		g_io_channel_unref(source);
+		priv->out = NULL;
+		return FALSE;
+	}
+
+	return TRUE;
+}
+
+static gboolean
+openfortivpn_stdout_cb (GIOChannel *source, GIOCondition condition, gpointer user_data)
+{
+	NMFortisslvpnPlugin *plugin = NM_FORTISSLVPN_PLUGIN(user_data);
+	NMFortisslvpnPluginPrivate *priv = NM_FORTISSLVPN_PLUGIN_GET_PRIVATE(plugin);
+	
+	if (condition == G_IO_HUP) {
+		g_io_channel_unref(source);
+		priv->out = NULL;
+		return FALSE;
+	}
+	
+	/* TODO Handle messages on stdout (match "2factor authentication token:" for example) */
+	
+	return TRUE;
+}
+
+static gboolean
+openfortivpn_stderr_cb (GIOChannel *source, GIOCondition condition, gpointer user_data)
+{
+	NMFortisslvpnPlugin *plugin = NM_FORTISSLVPN_PLUGIN(user_data);
+	NMFortisslvpnPluginPrivate *priv = NM_FORTISSLVPN_PLUGIN_GET_PRIVATE(plugin);
+	
+	if (condition == G_IO_HUP) {
+		g_io_channel_unref(source);
+		priv->err = NULL;
+		return FALSE;
+	}
+	
+	/* TODO Handle stderr messages and pass errors to NM (match: "ERROR:") */
+	
+	return TRUE;
+}
+
+static gboolean
 run_openfortivpn (NMFortisslvpnPlugin *plugin, NMSettingVpn *s_vpn, GError **error)
 {
 	NMFortisslvpnPluginPrivate *priv = NM_FORTISSLVPN_PLUGIN_GET_PRIVATE (plugin);
@@ -384,6 +440,7 @@ run_openfortivpn (NMFortisslvpnPlugin *plugin, NMSettingVpn *s_vpn, GError **err
 	const char *openfortivpn;
 	GPtrArray *argv;
 	const char *value;
+	gint in = -1, out = -1, err = -1;
 
 	openfortivpn = nm_find_openfortivpn ();
 	if (!openfortivpn) {
@@ -439,8 +496,10 @@ run_openfortivpn (NMFortisslvpnPlugin *plugin, NMSettingVpn *s_vpn, GError **err
 
 	g_ptr_array_add (argv, NULL);
 
-	if (!g_spawn_async (NULL, (char **) argv->pdata, NULL,
-	                    G_SPAWN_DO_NOT_REAP_CHILD, NULL, NULL, &pid, error)) {
+	if (!g_spawn_async_with_pipes (NULL, (char **) argv->pdata, NULL,
+	                    G_SPAWN_DO_NOT_REAP_CHILD, NULL, NULL, &pid, 
+						&in, &out, &err,
+						error)) {
 		g_ptr_array_free (argv, TRUE);
 		return FALSE;
 	}
@@ -448,6 +507,19 @@ run_openfortivpn (NMFortisslvpnPlugin *plugin, NMSettingVpn *s_vpn, GError **err
 
 	g_message ("openfortivpn started with pid %d", pid);
 
+#ifdef G_OS_WIN32
+	priv->in = g_io_channel_win32_new_fd (in);
+	priv->out = g_io_channel_win32_new_fd (out);
+	priv->err = g_io_channel_win32_new_fd (err);
+#else
+	priv->in = g_io_channel_unix_new (in);
+	priv->out = g_io_channel_unix_new (out);
+	priv->err = g_io_channel_unix_new (err);
+#endif
+	g_io_add_watch (priv->in, G_IO_HUP, (GIOFunc) openfortivpn_stdin_cb, plugin);
+	g_io_add_watch (priv->out, G_IO_IN | G_IO_HUP, (GIOFunc) openfortivpn_stdout_cb, plugin);
+	g_io_add_watch (priv->err, G_IO_IN | G_IO_HUP, (GIOFunc) openfortivpn_stderr_cb, plugin);
+	
 	priv->pid = pid;
 	g_child_watch_add (pid, openfortivpn_watch_cb, plugin);
 
