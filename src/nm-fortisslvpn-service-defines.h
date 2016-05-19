@@ -36,5 +36,7 @@
 #define NM_FORTISSLVPN_KEY_CERT              "cert"
 #define NM_FORTISSLVPN_KEY_KEY               "key"
 #define NM_FORTISSLVPN_KEY_TRUSTED_CERT      "trusted-cert"
+/* A two-factor auth token */
+#define NM_FORTISSLVPN_KEY_2FACTOR           "two-factor"
 
 #endif /* NM_FORTISSLVPN_PLUGIN_H */
