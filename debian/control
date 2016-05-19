@@ -1,10 +1,11 @@
 Source: network-manager-fortisslvpn
-Section: multiverse/net
+Section: net
 Priority: optional
 Maintainer: Gregor Riepl <onitake@gmail.com>
 Build-Depends: debhelper (>=9),dh-autoreconf,
-	libnm-dev,libnm-glib-dev,libnm-glib-vpn-dev,libnm-gtk-dev,
-	network-manager-dev
+  libnm-dev,libnm-glib-dev,libnm-glib-vpn-dev,libnm-gtk-dev,
+  network-manager-dev
+Depends: openfortivpn
 Standards-Version: 3.9.6
 Homepage: https://git.gnome.org/browse/network-manager-fortisslvpn
 Vcs-Git: https://git.gnome.org/browse/network-manager-fortisslvpn
@@ -13,13 +14,5 @@ Vcs-Browser: https://git.gnome.org/browse/network-manager-fortisslvpn
 Package: network-manager-fortisslvpn
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}
-Description: Fortinet SSLVPN support for NetworkManager
-	This requires the openfortivpn client installed 
-	https://github.com/adrienverge/openfortivpn
-	(C) 2015 Lubomir Rintel <lkundrak@v3.sk>
-	Based entirely on PPTP support:
-	0.7.x version:
-	(C) 2008 Dan Williams <dcbw@redhat.com>, and Tambet Ingo <tambet@gmail.com>
-	0.6.x version:
-	(C) 2005 - 2007 Antony Mee   http://www.students.ncl.ac.uk/a.j.mee
-	Based entirely on OpenVPN support by Tim Niemueller http://www.niemueller.de
+Description: Fortinet SSLVPN plugin for NetworkManager
+  This a frontend for the openfortivpn client.
