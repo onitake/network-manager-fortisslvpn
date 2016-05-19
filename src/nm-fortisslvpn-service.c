@@ -325,9 +325,9 @@ cleanup_plugin (NMFortisslvpnPlugin *plugin)
 		g_clear_pointer (&priv->config_file, g_free);
 	}
 	
-	g_clear_object(&priv->in);
-	g_clear_object(&priv->out);
-	g_clear_object(&priv->err);
+	g_clear_object (&priv->in);
+	g_clear_object (&priv->out);
+	g_clear_object (&priv->err);
 }
 
 static void
@@ -394,12 +394,11 @@ pppd_timed_out (gpointer user_data)
 static gboolean
 openfortivpn_stdin_cb (GIOChannel *source, GIOCondition condition, gpointer user_data)
 {
-	NMFortisslvpnPlugin *plugin = NM_FORTISSLVPN_PLUGIN(user_data);
-	NMFortisslvpnPluginPrivate *priv = NM_FORTISSLVPN_PLUGIN_GET_PRIVATE(plugin);
+	NMFortisslvpnPlugin *plugin = NM_FORTISSLVPN_PLUGIN (user_data);
+	NMFortisslvpnPluginPrivate *priv = NM_FORTISSLVPN_PLUGIN_GET_PRIVATE (plugin);
 	
 	if (condition == G_IO_HUP) {
-		g_io_channel_unref(source);
-		priv->in = NULL;
+		g_clear_object (&priv->in);
 		return FALSE;
 	}
 
@@ -409,8 +408,8 @@ openfortivpn_stdin_cb (GIOChannel *source, GIOCondition condition, gpointer user
 static gboolean
 openfortivpn_stdout_cb (GIOChannel *source, GIOCondition condition, gpointer user_data)
 {
-	NMFortisslvpnPlugin *plugin = NM_FORTISSLVPN_PLUGIN(user_data);
-	NMFortisslvpnPluginPrivate *priv = NM_FORTISSLVPN_PLUGIN_GET_PRIVATE(plugin);
+	NMFortisslvpnPlugin *plugin = NM_FORTISSLVPN_PLUGIN (user_data);
+	NMFortisslvpnPluginPrivate *priv = NM_FORTISSLVPN_PLUGIN_GET_PRIVATE (plugin);
 	gchar *line = NULL;
 	gsize size = 0;
 	GVariantBuilder *builder;
@@ -418,8 +417,7 @@ openfortivpn_stdout_cb (GIOChannel *source, GIOCondition condition, gpointer use
 	GVariant *keys;
 	
 	if (condition == G_IO_HUP) {
-		g_io_channel_unref(source);
-		priv->out = NULL;
+		g_clear_object (&priv->out);
 		return FALSE;
 	}
 	
@@ -427,17 +425,19 @@ openfortivpn_stdout_cb (GIOChannel *source, GIOCondition condition, gpointer use
 	
 	/* check if line starts with the 2-factor auth prompt */
 	if (g_strstr_len(line, size, NM_FORTISSLVPN_PROMPT_2FACTOR) == line) {
+		
 		/* send a message to the VPN plugin that we need another auth token */
-		msg = g_variant_new_string(NM_FORTISSLVPN_MSG_NEED_2FACTOR);
-		builder = g_variant_builder_new(G_VARIANT_TYPE("as"));
-		g_variant_builder_add(builder, "s", NM_FORTISSLVPN_KEY_2FACTOR);
-		keys = g_variant_new("as");
-		g_variant_builder_unref(builder);
-		g_signal_emit_by_name(plugin, "SecretsRequired", msg, keys);
-		g_variant_unref(msg);
-		g_variant_unref(keys);
+		msg = g_variant_new_string (NM_FORTISSLVPN_MSG_NEED_2FACTOR);
+		builder = g_variant_builder_new (G_VARIANT_TYPE ("as"));
+		g_variant_builder_add (builder, "s", NM_FORTISSLVPN_KEY_2FACTOR);
+		keys = g_variant_new ("as");
+		g_variant_builder_unref (builder);
+		g_signal_emit_by_name (plugin, "SecretsRequired", msg, keys);
+		g_variant_unref (msg);
+		g_variant_unref (keys);
+		
 	} else {
-		/* TODO pass the message on to the log or ignore it */
+		g_info("openfortivpn[O]: %s", line);
 	}
 	
 	g_free(line);
@@ -448,22 +448,22 @@ openfortivpn_stdout_cb (GIOChannel *source, GIOCondition condition, gpointer use
 static gboolean
 openfortivpn_stderr_cb (GIOChannel *source, GIOCondition condition, gpointer user_data)
 {
-	NMFortisslvpnPlugin *plugin = NM_FORTISSLVPN_PLUGIN(user_data);
-	NMFortisslvpnPluginPrivate *priv = NM_FORTISSLVPN_PLUGIN_GET_PRIVATE(plugin);
+	NMFortisslvpnPlugin *plugin = NM_FORTISSLVPN_PLUGIN (user_data);
+	NMFortisslvpnPluginPrivate *priv = NM_FORTISSLVPN_PLUGIN_GET_PRIVATE (plugin);
 	gchar *line = NULL;
 	gsize size = 0;
 	
 	if (condition == G_IO_HUP) {
-		g_io_channel_unref(source);
-		priv->err = NULL;
+		g_clear_object (&priv->err);
 		return FALSE;
 	}
 	
 	/* check if line is an error */
-	if (g_strstr_len(line, size, "ERROR:") == line) {
+	if (g_strstr_len (line, size, "ERROR:") == line) {
 		/* TODO Pass the error message to the user */
+		g_error("openfortivpn[E]: %s", line);
 	} else {
-		/* TODO pass the message on to the log or ignore it */
+		g_info("openfortivpn[E]: %s", line);
 	}
 	
 	return TRUE;
@@ -715,28 +715,29 @@ real_need_secrets (NMVpnServicePlugin *plugin,
 	return TRUE;
 }
 
-gboolean real_new_secrets(NMVpnServicePlugin *plugin,
-						  NMConnection *connection,
-						  GError **error)
+static gboolean
+real_new_secrets(NMVpnServicePlugin *plugin,
+                 NMConnection *connection,
+                 GError **error)
 {
 	NMFortisslvpnPluginPrivate *priv = NM_FORTISSLVPN_PLUGIN_GET_PRIVATE(plugin);
 	NMSetting *s_vpn;
 	const char *twofactor;
-	
-	g_return_val_if_fail(NM_IS_VPN_SERVICE_PLUGIN(plugin), FALSE);
-	g_return_val_if_fail(NM_IS_CONNECTION(connection), FALSE);
-	g_return_val_if_fail(priv->in, FALSE);
-	
+
+	g_return_val_if_fail (NM_IS_VPN_SERVICE_PLUGIN (plugin), FALSE);
+	g_return_val_if_fail (NM_IS_CONNECTION (connection), FALSE);
+	g_return_val_if_fail (priv->in, FALSE);
+
 	s_vpn = nm_connection_get_setting(connection, NM_TYPE_SETTING_VPN);
 
 	/* Check if we received a 2-factor token */
-	twofactor = nm_setting_vpn_get_secret(NM_SETTING_VPN(s_vpn), NM_FORTISSLVPN_KEY_2FACTOR);
+	twofactor = nm_setting_vpn_get_secret (NM_SETTING_VPN (s_vpn), NM_FORTISSLVPN_KEY_2FACTOR);
 	if (!twofactor)
 		return FALSE;
 
 	/* Yes, send it to the child */
-	g_io_channel_write_chars(priv->in, twofactor, -1, NULL, NULL);
-	
+	g_io_channel_write_chars (priv->in, twofactor, -1, NULL, NULL);
+
 	return TRUE;
 
 }
