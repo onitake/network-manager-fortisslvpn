@@ -66,13 +66,12 @@ typedef struct {
 	NMConnection *connection;
 	char *config_file;
 	NMDBusFortisslvpnPpp *dbus_skeleton;
-	/* These are the stdin, stdout and stderr of the daemon process,
-	 * respectively. Use them to capture error messages and send input,
+	/* These are the stdin and stdout of the daemon process.
+	 * Use them to capture error messages and send input,
 	 * for example for 2-factor authentication.
 	 */
 	GIOChannel *in;
 	GIOChannel *out;
-	GIOChannel *err;
 } NMFortisslvpnPluginPrivate;
 
 #define NM_FORTISSLVPN_PLUGIN_GET_PRIVATE(o) (G_TYPE_INSTANCE_GET_PRIVATE ((o), NM_TYPE_FORTISSLVPN_PLUGIN, NMFortisslvpnPluginPrivate))
@@ -82,7 +81,6 @@ typedef struct {
 #define FORTISSLVPN_SERVICE_SECRET_TRIES "fortisslvpn-service-secret-tries"
 
 #define NM_FORTISSLVPN_PROMPT_2FACTOR "2factor authentication token:"
-#define NM_FORTISSLVPN_MSG_NEED_2FACTOR "Please enter the 2factor authentication token:"
 
 typedef struct {
 	const char *name;
@@ -327,7 +325,6 @@ cleanup_plugin (NMFortisslvpnPlugin *plugin)
 	
 	g_clear_object (&priv->in);
 	g_clear_object (&priv->out);
-	g_clear_object (&priv->err);
 }
 
 static void
@@ -422,12 +419,15 @@ openfortivpn_stdout_cb (GIOChannel *source, GIOCondition condition, gpointer use
 	}
 	
 	g_io_channel_read_line (source, &line, &size, NULL, NULL);
-	
-	/* check if line starts with the 2-factor auth prompt */
-	if (g_strstr_len(line, size, NM_FORTISSLVPN_PROMPT_2FACTOR) == line) {
 		
-		/* send a message to the VPN plugin that we need another auth token */
-		msg = g_variant_new_string (NM_FORTISSLVPN_MSG_NEED_2FACTOR);
+	/* TODO Pass the messages to the UI instead of the log */
+	
+    /* Evaluate the output */
+	if (g_strstr_len(line, size, NM_FORTISSLVPN_PROMPT_2FACTOR) == line) {
+		/* Line starts with the 2-factor auth prompt */
+		
+		/* Send a message to the VPN plugin that we need another auth token */
+		msg = g_variant_new_string (_("Please enter the 2-factor authentication token:"));
 		builder = g_variant_builder_new (G_VARIANT_TYPE ("as"));
 		g_variant_builder_add (builder, "s", NM_FORTISSLVPN_KEY_2FACTOR);
 		keys = g_variant_new ("as");
@@ -436,35 +436,20 @@ openfortivpn_stdout_cb (GIOChannel *source, GIOCondition condition, gpointer use
 		g_variant_unref (msg);
 		g_variant_unref (keys);
 		
+	} else if (g_strstr_len (line, size, "ERROR:") == line) {
+		/* Line is an error message */
+		g_error("openfortivpn: %s", line);
+	} else if (g_strstr_len (line, size, "WARN:") == line) {
+		/* Line is a warning */
+		g_warning("openfortivpn: %s", line);
+	} else if (g_strstr_len (line, size, "INFO:") == line) {
+		/* Line is informational */
+		g_info("openfortivpn: %s", line);
 	} else {
-		g_info("openfortivpn[O]: %s", line);
+		g_debug("openfortivpn: %s", line);
 	}
 	
 	g_free(line);
-	
-	return TRUE;
-}
-
-static gboolean
-openfortivpn_stderr_cb (GIOChannel *source, GIOCondition condition, gpointer user_data)
-{
-	NMFortisslvpnPlugin *plugin = NM_FORTISSLVPN_PLUGIN (user_data);
-	NMFortisslvpnPluginPrivate *priv = NM_FORTISSLVPN_PLUGIN_GET_PRIVATE (plugin);
-	gchar *line = NULL;
-	gsize size = 0;
-	
-	if (condition == G_IO_HUP) {
-		g_clear_object (&priv->err);
-		return FALSE;
-	}
-	
-	/* check if line is an error */
-	if (g_strstr_len (line, size, "ERROR:") == line) {
-		/* TODO Pass the error message to the user */
-		g_error("openfortivpn[E]: %s", line);
-	} else {
-		g_info("openfortivpn[E]: %s", line);
-	}
 	
 	return TRUE;
 }
@@ -548,15 +533,12 @@ run_openfortivpn (NMFortisslvpnPlugin *plugin, NMSettingVpn *s_vpn, GError **err
 #ifdef G_OS_WIN32
 	priv->in = g_io_channel_win32_new_fd (in);
 	priv->out = g_io_channel_win32_new_fd (out);
-	priv->err = g_io_channel_win32_new_fd (err);
 #else
 	priv->in = g_io_channel_unix_new (in);
 	priv->out = g_io_channel_unix_new (out);
-	priv->err = g_io_channel_unix_new (err);
 #endif
 	g_io_add_watch (priv->in, G_IO_HUP, (GIOFunc) openfortivpn_stdin_cb, plugin);
 	g_io_add_watch (priv->out, G_IO_IN | G_IO_HUP, (GIOFunc) openfortivpn_stdout_cb, plugin);
-	g_io_add_watch (priv->err, G_IO_IN | G_IO_HUP, (GIOFunc) openfortivpn_stderr_cb, plugin);
 	
 	priv->pid = pid;
 	g_child_watch_add (pid, openfortivpn_watch_cb, plugin);
