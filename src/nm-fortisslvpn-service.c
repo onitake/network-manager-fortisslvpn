@@ -715,6 +715,32 @@ real_need_secrets (NMVpnServicePlugin *plugin,
 	return TRUE;
 }
 
+gboolean real_new_secrets(NMVpnServicePlugin *plugin,
+						  NMConnection *connection,
+						  GError **error)
+{
+	NMFortisslvpnPluginPrivate *priv = NM_FORTISSLVPN_PLUGIN_GET_PRIVATE(plugin);
+	NMSetting *s_vpn;
+	const char *twofactor;
+	
+	g_return_val_if_fail(NM_IS_VPN_SERVICE_PLUGIN(plugin), FALSE);
+	g_return_val_if_fail(NM_IS_CONNECTION(connection), FALSE);
+	g_return_val_if_fail(priv->in, FALSE);
+	
+	s_vpn = nm_connection_get_setting(connection, NM_TYPE_SETTING_VPN);
+
+	/* Check if we received a 2-factor token */
+	twofactor = nm_setting_vpn_get_secret(NM_SETTING_VPN(s_vpn), NM_FORTISSLVPN_KEY_2FACTOR);
+	if (!twofactor)
+		return FALSE;
+
+	/* Yes, send it to the child */
+	g_io_channel_write_chars(priv->in, twofactor, -1, NULL, NULL);
+	
+	return TRUE;
+
+}
+
 static gboolean
 real_disconnect (NMVpnServicePlugin *plugin, GError **err)
 {
@@ -783,6 +809,7 @@ nm_fortisslvpn_plugin_class_init (NMFortisslvpnPluginClass *fortisslvpn_class)
 	parent_class->connect = real_connect;
 	parent_class->need_secrets = real_need_secrets;
 	parent_class->disconnect = real_disconnect;
+	parent_class->new_secrets = real_new_secrets;
 }
 
 static GInitableIface *ginitable_parent_iface = NULL;
