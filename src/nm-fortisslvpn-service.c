@@ -72,6 +72,7 @@ typedef struct {
 	 */
 	GIOChannel *in;
 	GIOChannel *out;
+	gboolean wait_2factor;
 } NMFortisslvpnPluginPrivate;
 
 #define NM_FORTISSLVPN_PLUGIN_GET_PRIVATE(o) (G_TYPE_INSTANCE_GET_PRIVATE ((o), NM_TYPE_FORTISSLVPN_PLUGIN, NMFortisslvpnPluginPrivate))
@@ -426,6 +427,9 @@ openfortivpn_stdout_cb (GIOChannel *source, GIOCondition condition, gpointer use
 	if (g_strstr_len(line, size, NM_FORTISSLVPN_PROMPT_2FACTOR) == line) {
 		/* Line starts with the 2-factor auth prompt */
 		
+		/* Waiting for a reply... */
+		priv->wait_2factor = TRUE;
+		
 		/* Send a message to the VPN plugin that we need another auth token */
 		msg = g_variant_new_string (_("Please enter the 2-factor authentication token:"));
 		builder = g_variant_builder_new (G_VARIANT_TYPE ("as"));
@@ -709,7 +713,8 @@ real_new_secrets(NMVpnServicePlugin *plugin,
 	g_return_val_if_fail (NM_IS_VPN_SERVICE_PLUGIN (plugin), FALSE);
 	g_return_val_if_fail (NM_IS_CONNECTION (connection), FALSE);
 	g_return_val_if_fail (priv->in, FALSE);
-
+	g_return_val_if_fail (priv->wait_2factor, FALSE);
+	
 	s_vpn = nm_connection_get_setting(connection, NM_TYPE_SETTING_VPN);
 
 	/* Check if we received a 2-factor token */
@@ -718,7 +723,11 @@ real_new_secrets(NMVpnServicePlugin *plugin,
 		return FALSE;
 
 	/* Yes, send it to the child */
+	g_info("Got two-factor token: %s", twofactor);
 	g_io_channel_write_chars (priv->in, twofactor, -1, NULL, NULL);
+	
+	/* And we're done waiting */
+	priv->wait_2factor = FALSE;
 
 	return TRUE;
 
@@ -747,6 +756,7 @@ state_changed_cb (GObject *object, NMVpnServiceState state, gpointer user_data)
 	case NM_VPN_SERVICE_STATE_STOPPED:
 		remove_timeout_handler (NM_FORTISSLVPN_PLUGIN (object));
 		g_clear_object (&priv->connection);
+		priv->wait_2factor = FALSE;
 		break;
 	default:
 		break;
