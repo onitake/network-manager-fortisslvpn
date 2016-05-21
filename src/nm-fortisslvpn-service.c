@@ -72,6 +72,10 @@ typedef struct {
 	 */
 	GIOChannel *in;
 	GIOChannel *out;
+	/* The I/O watch handles for in and out */
+	guint in_watch;
+	guint out_watch;
+	/* TRUE if we're waiting for a 2-factor secret */
 	gboolean wait_2factor;
 } NMFortisslvpnPluginPrivate;
 
@@ -304,10 +308,27 @@ ensure_killed (gpointer data)
 }
 
 static void
+destroy_child_io (NMFortisslvpnPlugin *plugin)
+{
+	NMFortisslvpnPluginPrivate *priv = NM_FORTISSLVPN_PLUGIN_GET_PRIVATE (plugin);
+	
+	if (priv->in) {
+		g_source_remove(priv->in_watch);
+		g_clear_object(&priv->in);
+	}
+	if (priv->out) {
+		g_source_remove(priv->out_watch);
+		g_clear_object(&priv->in);
+	}
+}
+
+static void
 cleanup_plugin (NMFortisslvpnPlugin *plugin)
 {
 	NMFortisslvpnPluginPrivate *priv = NM_FORTISSLVPN_PLUGIN_GET_PRIVATE (plugin);
 
+	destroy_child_io(plugin);
+	
 	if (priv->pid) {
 		if (kill (priv->pid, SIGTERM) == 0)
 			g_timeout_add (2000, ensure_killed, GINT_TO_POINTER (priv->pid));
@@ -323,9 +344,6 @@ cleanup_plugin (NMFortisslvpnPlugin *plugin)
 		g_unlink (priv->config_file);
 		g_clear_pointer (&priv->config_file, g_free);
 	}
-	
-	g_clear_object (&priv->in);
-	g_clear_object (&priv->out);
 }
 
 static void
@@ -344,6 +362,9 @@ openfortivpn_watch_cb (GPid pid, gint status, gpointer user_data)
 	else
 		g_warning ("openfortivpn died from an unknown cause");
 
+	
+	destroy_child_io(plugin);
+	
 	/* Reap child if needed. */
 	waitpid (priv->pid, NULL, WNOHANG);
 	priv->pid = 0;
@@ -396,7 +417,8 @@ openfortivpn_stdin_cb (GIOChannel *source, GIOCondition condition, gpointer user
 	NMFortisslvpnPluginPrivate *priv = NM_FORTISSLVPN_PLUGIN_GET_PRIVATE (plugin);
 	
 	if (condition == G_IO_HUP) {
-		g_clear_object (&priv->in);
+		g_source_remove(priv->in_watch);
+		g_clear_object(&priv->in);
 		return FALSE;
 	}
 
@@ -415,7 +437,8 @@ openfortivpn_stdout_cb (GIOChannel *source, GIOCondition condition, gpointer use
 	GVariant *keys;
 	
 	if (condition == G_IO_HUP) {
-		g_clear_object (&priv->out);
+		g_source_remove(priv->out_watch);
+		g_clear_object(&priv->out);
 		return FALSE;
 	}
 	
@@ -541,8 +564,8 @@ run_openfortivpn (NMFortisslvpnPlugin *plugin, NMSettingVpn *s_vpn, GError **err
 	priv->in = g_io_channel_unix_new (in);
 	priv->out = g_io_channel_unix_new (out);
 #endif
-	g_io_add_watch (priv->in, G_IO_HUP, (GIOFunc) openfortivpn_stdin_cb, plugin);
-	g_io_add_watch (priv->out, G_IO_IN | G_IO_HUP, (GIOFunc) openfortivpn_stdout_cb, plugin);
+	priv->in_watch = g_io_add_watch (priv->in, G_IO_HUP, (GIOFunc) openfortivpn_stdin_cb, plugin);
+	priv->out_watch = g_io_add_watch (priv->out, G_IO_IN | G_IO_HUP, (GIOFunc) openfortivpn_stdout_cb, plugin);
 	
 	priv->pid = pid;
 	g_child_watch_add (pid, openfortivpn_watch_cb, plugin);
