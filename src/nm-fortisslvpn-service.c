@@ -85,7 +85,12 @@ typedef struct {
 #define NM_FORTISSLVPN_WAIT_PPPD 10000 /* 10 seconds */
 #define FORTISSLVPN_SERVICE_SECRET_TRIES "fortisslvpn-service-secret-tries"
 
-#define NM_FORTISSLVPN_PROMPT_2FACTOR "2factor authentication token:"
+#define NM_OPENFORTIVPN_MSGPFX_2FACTOR "2factor"
+#define NM_OPENFORTIVPN_MSGSFX_2FACTOR " authentication token:"
+#define NM_OPENFORTIVPN_MSGPFX_ERROR "ERROR: "
+#define NM_OPENFORTIVPN_MSGPFX_WARN "WARN:  "
+#define NM_OPENFORTIVPN_MSGPFX_INFO "INFO:  "
+#define NM_OPENFORTIVPN_PREFIX_LENGTH sizeof(NM_OPENFORTIVPN_MSGPFX_2FACTOR)
 
 typedef struct {
 	const char *name;
@@ -417,7 +422,6 @@ openfortivpn_stdin_cb (GIOChannel *source, GIOCondition condition, gpointer user
 	NMFortisslvpnPluginPrivate *priv = NM_FORTISSLVPN_PLUGIN_GET_PRIVATE (plugin);
 	
 	if (condition == G_IO_HUP) {
-		g_source_remove(priv->in_watch);
 		g_clear_object(&priv->in);
 		return FALSE;
 	}
@@ -430,25 +434,27 @@ openfortivpn_stdout_cb (GIOChannel *source, GIOCondition condition, gpointer use
 {
 	NMFortisslvpnPlugin *plugin = NM_FORTISSLVPN_PLUGIN (user_data);
 	NMFortisslvpnPluginPrivate *priv = NM_FORTISSLVPN_PLUGIN_GET_PRIVATE (plugin);
+	gchar token[NM_OPENFORTIVPN_PREFIX_LENGTH + sizeof(NM_OPENFORTIVPN_MSGSFX_2FACTOR)];
+	gsize token_length = 0;
 	gchar *line = NULL;
-	gsize size = 0;
+	gsize line_length = 0;
 	GVariantBuilder *builder;
 	GVariant *msg;
 	GVariant *keys;
 	
 	if (condition == G_IO_HUP) {
-		g_source_remove(priv->out_watch);
 		g_clear_object(&priv->out);
 		return FALSE;
 	}
 	
-	g_io_channel_read_line (source, &line, &size, NULL, NULL);
-		
+	g_io_channel_read_chars(source, token, NM_OPENFORTIVPN_PREFIX_LENGTH, &token_length, NULL);
+	
 	/* TODO Pass the messages to the UI instead of the log */
 	
     /* Evaluate the output */
-	if (g_strstr_len(line, size, NM_FORTISSLVPN_PROMPT_2FACTOR) == line) {
+	if (token_length == NM_OPENFORTIVPN_PREFIX_LENGTH && g_strstr_len(token, token_length, "2factor") == token) {
 		/* Line starts with the 2-factor auth prompt */
+		g_io_channel_read_chars(source, token, sizeof(token), &token_length, NULL);
 		
 		/* Waiting for a reply... */
 		priv->wait_2factor = TRUE;
@@ -463,20 +469,28 @@ openfortivpn_stdout_cb (GIOChannel *source, GIOCondition condition, gpointer use
 		g_variant_unref (msg);
 		g_variant_unref (keys);
 		
-	} else if (g_strstr_len (line, size, "ERROR:") == line) {
+	} else if (token_length == NM_OPENFORTIVPN_PREFIX_LENGTH && g_strstr_len (token, token_length, "ERROR: ") == token) {
 		/* Line is an error message */
-		g_error("openfortivpn: %s", line);
-	} else if (g_strstr_len (line, size, "WARN:") == line) {
+		g_io_channel_read_to_end(source, &line, &line_length, NULL);
+		g_io_channel_read_line(source, &line, &line_length, NULL, NULL);
+		g_error("openfortivpn: %.*s", (int) line_length, line);
+		g_free(line);
+	} else if (token_length == NM_OPENFORTIVPN_PREFIX_LENGTH && g_strstr_len (token, token_length, "WARN:  ") == token) {
 		/* Line is a warning */
-		g_warning("openfortivpn: %s", line);
-	} else if (g_strstr_len (line, size, "INFO:") == line) {
+		g_io_channel_read_line(source, &line, &line_length, NULL, NULL);
+		g_warning("openfortivpn: %.*s", (int) line_length, line);
+		g_free(line);
+	} else if (token_length == NM_OPENFORTIVPN_PREFIX_LENGTH && g_strstr_len (token, token_length, "INFO:  ") == token) {
 		/* Line is informational */
-		g_info("openfortivpn: %s", line);
+		g_io_channel_read_line(source, &line, &line_length, NULL, NULL);
+		g_info("openfortivpn: %.*s", (int) line_length, line);
+		g_free(line);
 	} else {
-		g_debug("openfortivpn: %s", line);
+		/* Line is something else */
+		g_io_channel_read_line(source, &line, &line_length, NULL, NULL);
+		g_debug("openfortivpn: %.*s%.*s", (int) token_length, token, (int) line_length, line);
+		g_free(line);
 	}
-	
-	g_free(line);
 	
 	return TRUE;
 }
