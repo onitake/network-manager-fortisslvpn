@@ -452,7 +452,7 @@ openfortivpn_stdout_cb (GIOChannel *source, GIOCondition condition, gpointer use
 	/* TODO Pass the messages to the UI instead of the log */
 	
     /* Evaluate the output */
-	if (token_length == NM_OPENFORTIVPN_PREFIX_LENGTH && g_strstr_len(token, token_length, "2factor") == token) {
+	if (token_length == NM_OPENFORTIVPN_PREFIX_LENGTH && g_strstr_len(token, token_length, NM_OPENFORTIVPN_MSGPFX_2FACTOR) == token) {
 		/* Line starts with the 2-factor auth prompt */
 		g_io_channel_read_chars(source, token, sizeof(token), &token_length, NULL);
 		
@@ -469,18 +469,18 @@ openfortivpn_stdout_cb (GIOChannel *source, GIOCondition condition, gpointer use
 		g_variant_unref (msg);
 		g_variant_unref (keys);
 		
-	} else if (token_length == NM_OPENFORTIVPN_PREFIX_LENGTH && g_strstr_len (token, token_length, "ERROR: ") == token) {
+	} else if (token_length == NM_OPENFORTIVPN_PREFIX_LENGTH && g_strstr_len (token, token_length, NM_OPENFORTIVPN_MSGPFX_ERROR) == token) {
 		/* Line is an error message */
 		g_io_channel_read_to_end(source, &line, &line_length, NULL);
 		g_io_channel_read_line(source, &line, &line_length, NULL, NULL);
 		g_error("openfortivpn: %.*s", (int) line_length, line);
 		g_free(line);
-	} else if (token_length == NM_OPENFORTIVPN_PREFIX_LENGTH && g_strstr_len (token, token_length, "WARN:  ") == token) {
+	} else if (token_length == NM_OPENFORTIVPN_PREFIX_LENGTH && g_strstr_len (token, token_length, NM_OPENFORTIVPN_MSGPFX_WARN) == token) {
 		/* Line is a warning */
 		g_io_channel_read_line(source, &line, &line_length, NULL, NULL);
 		g_warning("openfortivpn: %.*s", (int) line_length, line);
 		g_free(line);
-	} else if (token_length == NM_OPENFORTIVPN_PREFIX_LENGTH && g_strstr_len (token, token_length, "INFO:  ") == token) {
+	} else if (token_length == NM_OPENFORTIVPN_PREFIX_LENGTH && g_strstr_len (token, token_length, NM_OPENFORTIVPN_MSGPFX_INFO) == token) {
 		/* Line is informational */
 		g_io_channel_read_line(source, &line, &line_length, NULL, NULL);
 		g_info("openfortivpn: %.*s", (int) line_length, line);
@@ -762,6 +762,8 @@ real_new_secrets(NMVpnServicePlugin *plugin,
 	/* Yes, send it to the child */
 	g_info("Got two-factor token: %s", twofactor);
 	g_io_channel_write_chars (priv->in, twofactor, -1, NULL, NULL);
+    g_io_channel_write_chars (priv->in, "\n", -1, NULL, NULL);
+    g_io_channel_flush (priv->in, NULL);
 	
 	/* And we're done waiting */
 	priv->wait_2factor = FALSE;
