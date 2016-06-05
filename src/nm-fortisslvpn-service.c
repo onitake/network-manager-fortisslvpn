@@ -762,6 +762,8 @@ real_new_secrets(NMVpnServicePlugin *plugin,
 	/* Yes, send it to the child */
 	g_info("Got two-factor token: %s", twofactor);
 	g_io_channel_write_chars (priv->in, twofactor, -1, NULL, NULL);
+    g_io_channel_write_chars (priv->in, "\n", -1, NULL, NULL);
+    g_io_channel_flush (priv->in, NULL);
 	
 	/* And we're done waiting */
 	priv->wait_2factor = FALSE;
