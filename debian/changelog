@@ -1,8 +1,8 @@
-network-manager-fortisslvpn (1.3.0~git8bbf0fa) UNRELEASED; urgency=medium
+network-manager-fortisslvpn (1.3.0~git1.3bdb5a2) UNRELEASED; urgency=medium
 
   * Added basic support for 2-factor authentication
 
- -- Gregor Riepl <onitake@gmail.com>  Thu, 19 May 2016 08:29:03 +0200
+ -- Gregor Riepl <onitake@gmail.com>  Thu, 5 Jun 2016 23:44:12 +0200
 
 network-manager-fortisslvpn (1.3.0~git9fd88e20) unstable; urgency=medium
 
